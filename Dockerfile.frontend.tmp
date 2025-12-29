@@ -1,0 +1,9 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+COPY package*.json ./
+# We will install dependencies when the container starts or via a command
+# For dev, we might just use the host's node_modules if mounted, but it's better to install in container
+
+CMD ["npm", "run", "dev", "--", "--host"]

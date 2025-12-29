@@ -1,0 +1,232 @@
+:root {
+  --primary: #c41e3a;
+  --secondary: #ffd700;
+  --bg-dark: #0f172a;
+  --glass: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #064e3b;
+  /* Deep felt green */
+  color: white;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Radiant light effect on the table */
+  background: radial-gradient(circle at center, #065f46 0%, #064e3b 70%, #022c22 100%);
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  perspective: 1000px;
+}
+
+.lobby-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 32px;
+  padding: 3.5rem;
+  width: 100%;
+  max-width: 500px;
+  text-align: center;
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(to right, #f87171, #facc15);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+}
+
+.subtitle {
+  color: #94a3b8;
+  margin-bottom: 2.5rem;
+}
+
+input[type="text"] {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  padding: 1rem 1rem 1rem 3rem;
+  border-radius: 12px;
+  color: white;
+  box-sizing: border-box;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.start-btn {
+  width: 100%;
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 1.2rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 10px 15px -3px rgba(196, 30, 58, 0.3);
+}
+
+.game-container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  /* 3D Tilt for perspective */
+  transform: rotateX(10deg);
+  transform-style: preserve-3d;
+}
+
+#phaser-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Suble felt grain effect */
+body::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.03;
+  pointer-events: none;
+  background-image: url("https://www.transparenttextures.com/patterns/felt.png");
+}
+
+.quit-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  backdrop-filter: blur(5px);
+  z-index: 1000;
+}
+
+.how-to-play {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--glass-border);
+  text-align: left;
+}
+
+.how-to-play h3 {
+  font-size: 1rem;
+  color: var(--secondary);
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.how-to-play ul {
+  padding-left: 1.25rem;
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.how-to-play li {
+  margin-bottom: 0.5rem;
+}
+
+/* --- HUD & Turn Indicator --- */
+.hud-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.hud-item {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.75rem 1.25rem;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  min-width: 150px;
+}
+
+.hud-label {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.hud-value {
+  color: #ffd700;
+  font-weight: 800;
+  font-size: 1.2rem;
+}
+
+.turn-indicator {
+  position: absolute;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #c41e3a;
+  color: white;
+  padding: 0.6rem 1.5rem;
+  border-radius: 30px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 0 30px rgba(196, 30, 58, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.turn-indicator.active {
+  opacity: 1;
+  bottom: 140px;
+}
