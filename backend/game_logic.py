@@ -23,6 +23,7 @@ class GameState(BaseModel):
     round_finished: bool = False
     game_over: bool = False
     scores: Dict[str, int] = {} # Overall game scores
+    score_details: Dict[str, Dict[str, int]] = {} # Detailed breakdown for UI
 
 def create_deck() -> List[Card]:
     suits = ['H', 'S', 'D', 'C'] # Hearts, Spades, Diamonds, Clubs
@@ -80,6 +81,11 @@ class ChkoubaEngine:
 
     def play_card(self, player_index: int, card_id: str, capture_combo_index: Optional[int] = None):
         player = self.state.players[player_index]
+        
+        # TRACE TABLE STATE
+        table_str = ", ".join([f"{c.id}({c.value})" for c in self.state.table])
+        print(f"TRACE: TABLE BEFORE {player.name} plays: [{table_str}]", flush=True)
+
         card = next((c for c in player.hand if c.id == card_id), None)
         if not card:
             return False
@@ -91,11 +97,17 @@ class ChkoubaEngine:
             # Capture
             player.captured_cards.append(card)
             player.captured_cards.extend(combo)
+            
+            # DEBUG TRACE
+            combo_str = ", ".join([f"{c.id}({c.value})" for c in combo])
+            print(f"TRACE: {player.name} played {card.id}({card.value}) and took [{combo_str}]", flush=True)
+            
             # Remove from table
             self.state.table = [c for c in self.state.table if c not in combo]
             # Check for Chkouba
             if not self.state.table and not self.is_last_card_of_round():
                 player.chkoubas += 1
+                print(f"TRACE: CHKOUBA! by {player.name}", flush=True)
             self.state.last_capture_player_index = player_index
         else:
             # Drop card
@@ -113,7 +125,7 @@ class ChkoubaEngine:
         # Check if hands are empty
         if all(not p.hand for p in self.state.players):
             if self.state.deck:
-                self.deal_cards()
+                pass # Manual refill in main.py to allow animation time
             else:
                 self.end_round()
 
@@ -166,9 +178,47 @@ class ChkoubaEngine:
             round_points[i] += p.chkoubas
 
         # Update total scores
+        # Update total scores and populate details
         for i, pts in enumerate(round_points):
             name = self.state.players[i].name
             self.state.scores[name] = self.state.scores.get(name, 0) + pts
+            
+            # Detailed Breakdown for UI
+            # Store logic: Category_Amt (raw count), Category_Pt (points awarded)
+            if name not in self.state.score_details:
+                self.state.score_details[name] = {}
+            
+            details = self.state.score_details[name]
+            p = self.state.players[i]
+
+            # Carta
+            details["Carta_Amt"] = counts[i]
+            details["Carta_Pt"] = 1 if (round_points[i] > 0 and counts[i] == max_count and counts.count(max_count) == 1) else 0
+            
+            # Dinari
+            details["Dinari_Amt"] = dinari_counts[i]
+            details["Dinari_Pt"] = 1 if (round_points[i] > 0 and dinari_counts[i] == max_dinari and dinari_counts.count(max_dinari) == 1) else 0
+
+            # Sebaa
+            has_7d = any(c.id == '7D' for c in p.captured_cards)
+            details["Sebaa_Amt"] = 1 if has_7d else 0
+            details["Sebaa_Pt"] = 1 if has_7d else 0
+            
+            # Chkouba
+            details["Chkouba_Amt"] = p.chkoubas
+            details["Chkouba_Pt"] = p.chkoubas
+            
+            # Bermila (approximate tracking)
+            # Find the winning bermila value if any
+            bermila_pt = 0
+            # Re-eval logic locally or trust the diff
+            # Let's rely on total round points diff
+            subtotal = details["Carta_Pt"] + details["Dinari_Pt"] + details["Sebaa_Pt"] + details["Chkouba_Pt"]
+            bermila_pt = max(0, pts - subtotal)
+            details["Bermila_Pt"] = bermila_pt
+            details["Bermila_Amt"] = 1 if bermila_pt > 0 else 0 
+            
+            self.state.score_details[name] = details
             
         # Check for game over (usually 21 points)
         for name, score in self.state.scores.items():

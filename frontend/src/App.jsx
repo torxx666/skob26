@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ChkoubaGame from './game/ChkoubaGame';
 import { User, Trophy, Users } from 'lucide-react';
 
@@ -7,20 +7,29 @@ function App() {
     const [gameStarted, setGameStarted] = useState(false);
     const [playerCount, setPlayerCount] = useState(2);
 
+    const [gameId, setGameId] = useState(null);
+
     useEffect(() => {
         const savedSession = localStorage.getItem('chkouba_session');
         if (savedSession) {
-            const { name, playerCount } = JSON.parse(savedSession);
-            setName(name);
-            setPlayerCount(playerCount);
-            setGameStarted(true);
+            const { name, playerCount, gameId } = JSON.parse(savedSession);
+            if (name && name.trim()) {
+                setName(name);
+                setPlayerCount(playerCount);
+                setGameId(gameId || Date.now()); // Fallback if old session format
+                setGameStarted(true);
+            } else {
+                localStorage.removeItem('chkouba_session');
+            }
         }
     }, []);
 
     const handleStart = (e) => {
         e.preventDefault();
         if (name.trim()) {
-            localStorage.setItem('chkouba_session', JSON.stringify({ name, playerCount }));
+            const newGameId = Date.now();
+            setGameId(newGameId);
+            localStorage.setItem('chkouba_session', JSON.stringify({ name, playerCount, gameId: newGameId }));
             setGameStarted(true);
         }
     };
@@ -33,7 +42,7 @@ function App() {
     if (gameStarted) {
         return (
             <div className="game-container">
-                <ChkoubaGame playerName={name} playerCount={playerCount} onQuit={handleQuit} />
+                <ChkoubaGame playerName={name} playerCount={playerCount} gameId={gameId} onQuit={handleQuit} />
                 <button className="quit-btn" onClick={handleQuit}>Quitter</button>
             </div>
         );

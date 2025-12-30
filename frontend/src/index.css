@@ -11,14 +11,13 @@ body {
   padding: 0;
   font-family: 'Inter', system-ui, sans-serif;
   background-color: #064e3b;
-  /* Deep felt green */
   color: white;
   height: 100vh;
+  width: 100vw;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Radiant light effect on the table */
   background: radial-gradient(circle at center, #065f46 0%, #064e3b 70%, #022c22 100%);
 }
 
@@ -33,6 +32,9 @@ body {
   align-items: center;
   justify-content: center;
   height: 100%;
+  width: 100%;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 .glass-card {
@@ -44,9 +46,7 @@ body {
   width: 100%;
   max-width: 500px;
   text-align: center;
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.6),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.1);
   animation: float 6s ease-in-out infinite;
 }
 
@@ -101,15 +101,18 @@ input[type="text"] {
   cursor: pointer;
   transition: transform 0.2s ease, filter 0.2s ease;
   box-shadow: 0 10px 15px -3px rgba(196, 30, 58, 0.3);
+  margin-top: 1rem;
 }
 
 .game-container {
   width: 100vw;
   height: 100vh;
   position: relative;
-  /* 3D Tilt for perspective */
+  /* Default desktop: slight tilt */
   transform: rotateX(10deg);
   transform-style: preserve-3d;
+  overflow: hidden;
+  /* Prevent scroll */
 }
 
 #phaser-container {
@@ -117,7 +120,6 @@ input[type="text"] {
   height: 100%;
 }
 
-/* Suble felt grain effect */
 body::after {
   content: "";
   position: fixed;
@@ -170,7 +172,6 @@ body::after {
   margin-bottom: 0.5rem;
 }
 
-/* --- HUD & Turn Indicator --- */
 .hud-container {
   position: absolute;
   top: 20px;
@@ -229,4 +230,57 @@ body::after {
 .turn-indicator.active {
   opacity: 1;
   bottom: 140px;
+}
+
+/* --- MOBILE & RESPONSIVE --- */
+@media (max-width: 768px) {
+  .game-container {
+    transform: none;
+    /* Disable 3D tilt on mobile for better usability */
+  }
+
+  .glass-card {
+    padding: 1.5rem;
+    max-width: 90%;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+  }
+
+  .subtitle {
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+  }
+
+  .hud-container {
+    top: 60px;
+    /* Below quit button */
+    right: 10px;
+    left: 10px;
+    /* Full width */
+    flex-direction: row;
+    gap: 5px;
+  }
+
+  .hud-item {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .hud-label {
+    font-size: 0.6rem;
+  }
+
+  .hud-value {
+    font-size: 1rem;
+  }
+
+  .turn-indicator {
+    bottom: 25%;
+    /* Relative position to avoid covering hand */
+  }
 }
