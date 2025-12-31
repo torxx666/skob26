@@ -7,6 +7,7 @@ const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
     const socketRef = useRef(null);
     const [gameState, setGameState] = useState(null);
     const [connectionError, setConnectionError] = useState(false);
+    const [isMuted, setIsMuted] = useState(false);
 
     // Safeguard for missing name
     useEffect(() => {
@@ -33,7 +34,7 @@ const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
             width: window.innerWidth,
             height: window.innerHeight,
             transparent: true,
-            audio: { noAudio: true },
+            // audio: { noAudio: true }, // FIXED: Enable Audio!
             physics: { default: 'arcade' },
             scene: [ChkoubaScene]
         };
@@ -45,9 +46,16 @@ const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
         // Use 127.0.0.1 to avoid potential IPv6 localhost issues in WSL
         const items = playerName.trim();
         // Use the prop passed from App.js which is consistent across reloads
-        const wsUrl = `ws://127.0.0.1:8000/ws/${gameId}/${items}`;
+        const wsUrl = `ws://127.0.0.1:8000/ws/${gameId}/${items}?count=${playerCount}`;
         const socket = new WebSocket(wsUrl);
         socketRef.current = socket;
+
+        // Expose send function to Phaser Scene via Registry
+        game.registry.set('sendMessage', (data) => {
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify(data));
+            }
+        });
 
         socket.onopen = () => {
             console.log("WS Connected to", gameId);
@@ -232,6 +240,26 @@ const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
                     }} style={{ position: 'absolute', top: '70px', left: '20px', width: 'fit-content', padding: '6px 16px', fontSize: '14px', fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: '8px', color: '#fff', cursor: 'pointer', backdropFilter: 'blur(5px)', zIndex: 2000 }}>Nouvelle Partie</button>
                 </>
             )}
+
+            {/* Mute Toggle (React Overlay) */}
+            <button
+                onClick={() => {
+                    const scene = gameRef.current?.scene.getScene('ChkoubaScene');
+                    if (scene) {
+                        const muted = scene.toggleMute();
+                        setIsMuted(muted);
+                    }
+                }}
+                style={{
+                    position: 'absolute', top: '20px', right: '20px',
+                    fontSize: '2rem', background: 'rgba(0,0,0,0.5)',
+                    border: 'none', borderRadius: '50%', width: '50px', height: '50px',
+                    cursor: 'pointer', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}
+            >
+                {isMuted ? '🔇' : '🔊'}
+            </button>
+
             <button className="quit-btn" onClick={() => onQuit ? onQuit() : window.location.reload()} style={{ zIndex: 2000 }}>Quitter</button>
         </div>
     );

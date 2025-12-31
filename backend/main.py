@@ -118,62 +118,59 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, player_name: st
                                     game.start_new_round()
                                 
                                 # Broadcast State
+                                # Broadcast State
                                 state_data = jsonable_encoder(game.state)
                                 await manager.broadcast(game_id, {
                                     "type": "UPDATE",
                                     "state": state_data
                                 })
                                 
-                                # AI TURN Logic
-                                if not game.state.round_finished and not game.state.game_over:
-                                    current_p = game.state.players[game.state.current_player_index]
-                                    if current_p.is_ai:
-                                        print(f"DEBUG: AI Turn for {current_p.name}", flush=True)
-                                        await asyncio.sleep(2.0) # Reduced from 3.5s as requested
-                                        ai_idx = game.state.current_player_index
-                                        # Use correct method from game_logic.py
-                                        ai_card_id, ai_combo_idx = game.get_ai_move()
-                                        
-                                        if ai_card_id:
-                                            print(f"DEBUG: AI plays {ai_card_id}, combo {ai_combo_idx}", flush=True)
-                                            # Ensure we pass strings if needed, assuming id is string
-                                            game.play_card(ai_idx, ai_card_id, ai_combo_idx)
-                                            
-                                            if game.state.round_finished:
-                                                 # 1. Broadcast the "Played" state first so user sees the move
-                                                 temp_state = jsonable_encoder(game.state)
-                                                 await manager.broadcast(game_id, {
-                                                    "type": "UPDATE",
-                                                    "state": temp_state
-                                                 })
-                                                 # 2. Wait for animation
-                                                 await asyncio.sleep(2.0)
-                                                 # Manual Progression: Do NOT auto start. Wait for user.
-                                                 pass
-                                            state_data = jsonable_encoder(game.state)
-                                            await manager.broadcast(game_id, {
-                                                "type": "UPDATE",
-                                                "state": state_data
-                                            })
-                                            
-                                            # Check for Mid-Round Hand Refill
-                                            # If logic removed auto-deal, we check here:
-                                            players_empty = all(not p.hand for p in game.state.players)
-                                            if players_empty and game.state.deck and not game.state.round_finished:
-                                                # Animation total is ~4.3s (300+1000+800+600+600+1000). 
-                                                # Set to 5.0s to be safe.
-                                                await asyncio.sleep(5.0) 
-                                                game.deal_cards()
-                                                
-                                                state_data = jsonable_encoder(game.state)
-                                                await manager.broadcast(game_id, {
-                                                    "type": "UPDATE",
-                                                    "state": state_data
-                                                })
+                                # NO AI LOOP HERE. Wait for ANIMATION_COMPLETE.
+
                         except Exception as inner_e:
                             print(f"ERROR playing card: {inner_e}", flush=True)
                             import traceback
                             traceback.print_exc()
+
+                elif message.get("type") == "ANIMATION_COMPLETE":
+                    try:
+                        game = games[game_id]
+                        if not game.state.round_finished and not game.state.game_over:
+                            current_p = game.state.players[game.state.current_player_index]
+                            if current_p.is_ai:
+                                print(f"DEBUG: ANIMATION_COMPLETE received. Executing AI Turn for {current_p.name}", flush=True)
+                                
+                                # Small thinking delay for realism (non-blocking animation)
+                                await asyncio.sleep(0.5)
+                                
+                                ai_idx = game.state.current_player_index
+                                ai_card_id, ai_combo_idx = game.get_ai_move()
+                                
+                                if ai_card_id:
+                                    print(f"DEBUG: AI plays {ai_card_id}, combo {ai_combo_idx}", flush=True)
+                                    game.play_card(ai_idx, ai_card_id, ai_combo_idx)
+                                    
+                                    # Broadcast New State (triggering frontend animation)
+                                    state_data = jsonable_encoder(game.state)
+                                    await manager.broadcast(game_id, {
+                                        "type": "UPDATE",
+                                        "state": state_data
+                                    })
+                                    
+                                    # Check for Mid-Round Hand Refill
+                                    players_empty = all(not p.hand for p in game.state.players)
+                                    if players_empty and game.state.deck and not game.state.round_finished:
+                                        await asyncio.sleep(2.0) # Wait for table clear anim
+                                        game.deal_cards()
+                                        state_data = jsonable_encoder(game.state)
+                                        await manager.broadcast(game_id, {
+                                            "type": "UPDATE",
+                                            "state": state_data
+                                        })
+                    except Exception as inner_e:
+                        print(f"ERROR playing card: {inner_e}", flush=True)
+                        import traceback
+                        traceback.print_exc()
 
                 elif message.get("type") == "NEXT_ROUND":
                     game = games[game_id]
