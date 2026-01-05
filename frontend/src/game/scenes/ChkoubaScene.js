@@ -351,8 +351,8 @@ export default class ChkoubaScene extends Phaser.Scene {
             currentTurnName = state.players[aiPlayerIndex].name;
         }
 
-        // Update Indicator
-        this.updateTurnIndicator(currentTurnName);
+        // Update Indicator - MOVED TO END
+        // this.updateTurnIndicator(currentTurnName);
 
         state.players.forEach((p, index) => {
             // Calculate relative position (0=Me, 1=Right, 2=Top, 3=Left)
@@ -463,7 +463,12 @@ export default class ChkoubaScene extends Phaser.Scene {
         }
 
         // Cleanup
-        this.cleanupRemovedCards(validIds, state.players, validMyIndex, width, height);
+        const cleanupDelay = this.cleanupRemovedCards(validIds, state.players, validMyIndex, width, height);
+
+        // Update Indicator - Delayed by capture animation
+        this.time.delayedCall(cleanupDelay, () => {
+             this.updateTurnIndicator(currentTurnName);
+        });
     }
 
     runAiSequence(aiPlayedCardId, capturedTableIds, state, width, height, handCardH, tableCardW, tableCardH, pileAlignX, startX, startY) {
@@ -483,17 +488,16 @@ export default class ChkoubaScene extends Phaser.Scene {
         this.children.bringToTop(playedSprite);
 
         // Sequence
-        this.tweens.add({
-            targets: playedSprite, x: width / 2, y: height * 0.35, angle: 0, duration: 800, ease: 'Cubic.easeOut',
+            targets: playedSprite, x: width / 2, y: height * 0.35, angle: 0, duration: 400, ease: 'Cubic.easeOut',
             onComplete: () => {
                 this.tweens.add({
-                    targets: playedSprite, scaleX: 0, duration: 300,
+                    targets: playedSprite, scaleX: 0, duration: 150,
                     onComplete: () => {
                         this.updateCardTexture(playedSprite, aiPlayedCardId, true, tableCardW, tableCardH);
                         this.tweens.add({
-                            targets: playedSprite, scaleX: 1, duration: 300,
+                            targets: playedSprite, scaleX: 1, duration: 150,
                             onComplete: () => {
-                                this.time.delayedCall(1000, () => {
+                                this.time.delayedCall(300, () => {
                                     if (capturedTableIds.length > 0) {
                                         // Capture
                                         capturedTableIds.forEach(id => {
@@ -508,16 +512,16 @@ export default class ChkoubaScene extends Phaser.Scene {
                                                 targets: glow,
                                                 alpha: 0.6,
                                                 scale: 1.05,
-                                                duration: 400,
+                                                duration: 250,
                                                 yoyo: true,
                                                 repeat: 2
                                             });
                                         });
-                                        this.time.delayedCall(800, () => {
+                                        this.time.delayedCall(400, () => {
                                             this.tweens.add({
-                                                targets: playedSprite, x: width / 2, y: height / 2, duration: 600, ease: 'Back.easeOut',
+                                                targets: playedSprite, x: width / 2, y: height / 2, duration: 400, ease: 'Back.easeOut',
                                                 onComplete: () => {
-                                                    this.time.delayedCall(600, () => {
+                                                    this.time.delayedCall(200, () => {
                                                         const allSprites = [playedSprite, ...capturedTableIds.map(id => this.cardMap.get(id)).filter(x => x)];
                                                         // Fix: Bring to top so they don't slide under other table cards
                                                         allSprites.forEach(s => s.setDepth(100));
@@ -545,7 +549,7 @@ export default class ChkoubaScene extends Phaser.Scene {
                                                         }
 
                                                         this.tweens.add({
-                                                            targets: allSprites, x: targetX, y: targetY, angle: targetAngle, scale: 0.3, alpha: 0, duration: 1000, ease: 'Back.easeIn',
+                                                            targets: allSprites, x: targetX, y: targetY, angle: targetAngle, scale: 0.3, alpha: 0, duration: 600, ease: 'Back.easeIn',
                                                             onComplete: () => {
                                                                 allSprites.forEach(s => { if (s) { s.destroy(); if (s.card_id) this.cardMap.delete(s.card_id); } });
                                                                 this.aiAnimatingCards.delete(aiPlayedCardId);
@@ -565,7 +569,7 @@ export default class ChkoubaScene extends Phaser.Scene {
                                         // Drop
                                         const finalCoords = this.getTableCoords(state.table.findIndex(c => c.id === aiPlayedCardId), state.table.length);
                                         this.tweens.add({
-                                            targets: playedSprite, x: finalCoords.x, y: finalCoords.y, duration: 800, ease: 'Cubic.easeOut',
+                                            targets: playedSprite, x: finalCoords.x, y: finalCoords.y, duration: 400, ease: 'Cubic.easeOut',
                                             onComplete: () => {
                                                 this.aiAnimatingCards.delete(aiPlayedCardId);
                                                 this.sendAnimationComplete();
@@ -598,6 +602,7 @@ export default class ChkoubaScene extends Phaser.Scene {
     }
 
     cleanupRemovedCards(validIds, players, myIndex, width, height) {
+        let maxDuration = 0;
         this.cardMap.forEach((sprite, id) => {
             if (this.aiAnimatingCards.has(id)) return;
             if (!validIds.has(id)) {
@@ -630,15 +635,19 @@ export default class ChkoubaScene extends Phaser.Scene {
                 sprite.addAt(glow, 0);
 
                 this.tweens.add({
-                    targets: glow, alpha: 0.6, scale: 1.05, duration: 400, yoyo: true, repeat: 2
+                    targets: glow, alpha: 0.6, scale: 1.05, duration: 250, yoyo: true, repeat: 2
                 });
 
+                const CAPTURE_DURATION = 600;
+                maxDuration = Math.max(maxDuration, CAPTURE_DURATION);
+
                 this.tweens.add({
-                    targets: sprite, x: targetPileX, y: targetPileY, scale: 0.3, alpha: 0, duration: 1000, ease: 'Back.easeIn',
+                    targets: sprite, x: targetPileX, y: targetPileY, scale: 0.3, alpha: 0, duration: CAPTURE_DURATION, ease: 'Back.easeIn',
                     onComplete: () => { sprite.destroy(); this.cardMap.delete(id); }
                 });
             }
         });
+        return maxDuration;
     }
 
     renderPile(p, relativePos, width, height, handCardW) {
@@ -701,6 +710,11 @@ export default class ChkoubaScene extends Phaser.Scene {
             else { this.opponentArea.add(sprite); sprite.setDepth(20); }
         }
         this.updateCardTexture(sprite, id, isFaceUp, w, h);
+
+        // Fix: If AI is animating this card, DO NOT interfere (no tween, no sound)
+        if (this.aiAnimatingCards.has(id)) {
+            return sprite;
+        }
 
         // Fix: Prevent "Spinning" or Jitter if already in place
         // Kill running tweens to prevent conflict

@@ -184,13 +184,16 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, player_name: st
                 elif message.get("type") == "RESET":
                     print(f"DEBUG: Resetting game {game_id}", flush=True)
                     game = games[game_id]
-                    game.__init__([p.name for p in game.state.players if not p.is_ai], ai_count=1)
+                    # Fix: Preserve existing AI count
+                    current_ai_count = sum(1 for p in game.state.players if p.is_ai)
+                    game.__init__([p.name for p in game.state.players if not p.is_ai], ai_count=current_ai_count)
+                    
                     state_data = jsonable_encoder(game.state)
                     await manager.broadcast(game_id, {
                         "type": "INIT",
                         "state": state_data
                     })
-                    print(f"DEBUG: RESET Game {game_id}", flush=True)
+                    print(f"DEBUG: RESET Game {game_id} with {current_ai_count} AI", flush=True)
 
             except WebSocketDisconnect:
                 print(f"DEBUG: Client disconnected {game_id}", flush=True)
