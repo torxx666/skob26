@@ -118,7 +118,7 @@ export default class ChkoubaScene extends Phaser.Scene {
 
         this.scale.on('resize', (gameSize) => {
             this.drawMat();
-            if (this.lastState) this.renderState(this.lastState, this.currentPlayerName);
+            if (this.lastState) this.renderState(this.lastState, this.currentPlayerName, true);
         });
 
         // Audio Context Resume on first interaction
@@ -354,18 +354,163 @@ export default class ChkoubaScene extends Phaser.Scene {
         // Update Indicator - MOVED TO END
         // this.updateTurnIndicator(currentTurnName);
 
-        state.players.forEach((p, index) => {
-            // Calculate relative position (0=Me, 1=Right, 2=Top, 3=Left)
-            let relativePos = (index - validMyIndex + 4) % 4;
+        // Helper for Relative Position (Enforces 2-Player Face-to-Face)
+        // Note: Defining it here is wrong if this is inside renderState. 
+        // But see line 367: 'renderState(state, playerName) {'
+        // The previous tool inserted 'getRelativePos' BEFORE 'renderState', but seemingly inside the previous method?
+        // Let's assume we are inside 'updateTurnIndicator'? No, line 354 says 'MOVED TO END'.
+        // We are likely inside 'updateGameState' or similar. 
+        // Actually, let's look at the class structure.
+        // It seems safer to just use 'this.getRelativePos' and define it at class level.
+        // I will replace this whole block to close the previous method and start Fresh.
+    }
 
-            // Fix for 2-Player Mode: Force Opponent to TOP (Pos 2) instead of RIGHT (Pos 1)
-            if (state.players.length === 2 && relativePos === 1) {
-                relativePos = 2;
+    // Helper for Relative Position (Enforces 2-Player Face-to-Face)
+    getRelativePos(targetIndex, myIndex, totalPlayers) {
+        let relativePos = (targetIndex - myIndex + 4) % 4;
+        // Fix for 2-Player Mode: Force ANY Opponent to TOP (Pos 2)
+        // Normal logic: P1 is Right of P0, P0 is Left of P1.
+        // We want Face-to-Face (Top).
+        if (totalPlayers === 2 && relativePos !== 0) {
+            relativePos = 2;
+        }
+        return relativePos;
+    }
+
+    renderState(state, playerName, silent = false) {
+        // Positions (0: Bottom, 1: Right, 2: Top, 3: Left)
+        const width = this.scale.width;
+        const height = this.scale.height;
+        const handCardW = Math.min(width * 0.22, 120);
+        const handCardH = handCardW * 1.5;
+        const tableCardW = Math.min(width * 0.14, 80);
+        const tableCardH = tableCardW * 1.5;
+        const pileAlignX = width - 100;
+
+        const positions = [
+            { x: width / 2, y: height - (handCardH * 0.6), angle: 0 },   // Bottom (Me)
+            { x: width - (handCardH * 0.6), y: height / 2, angle: -90 }, // Right
+            { x: width / 2, y: handCardH * 0.6, angle: 180 },          // Top
+            { x: handCardH * 0.6, y: height / 2, angle: 90 }           // Left
+        ];
+
+        // Identify "My" Index
+        const myIndex = state.players.findIndex(p => p.name === playerName);
+        const validMyIndex = myIndex === -1 ? 0 : myIndex; // Spectator view as P0
+
+        // --- DETECT NEW AI PLAY ---
+        let aiPlayedCardId = null;
+        let aiPlayerIndex = -1;
+        const capturedTableIds = [];
+
+        if (this.lastState) {
+            state.players.forEach((currP, idx) => {
+                if (currP.name === playerName) return; // Skip me
+                const prevP = this.lastState.players.find(p => p.name === currP.name);
+                if (prevP && prevP.hand.length > currP.hand.length) {
+                    aiPlayerIndex = idx;
+                    if (currP.captured_cards.length > prevP.captured_cards.length) {
+                        // Capture
+                        const diff = currP.captured_cards.filter(c => !prevP.captured_cards.some(pc => pc.id === c.id));
+                        const capturedFromHand = diff.find(c => prevP.hand.some(h => h.id === c.id));
+                        if (capturedFromHand) aiPlayedCardId = capturedFromHand.id;
+                    } else {
+                        // Drop
+                        const prevHandIds = new Set(prevP.hand.map(c => c.id));
+                        const lastTableIds = new Set(this.lastState.table.map(c => c.id));
+                        const droppedCard = state.table.find(c => prevHandIds.has(c.id) && !lastTableIds.has(c.id));
+                        if (droppedCard) aiPlayedCardId = droppedCard.id;
+                    }
+                }
+            });
+        }
+
+        if (aiPlayedCardId) {
+            // Find captured table cards
+            const prevTable = this.lastState.table;
+            const currTableIds = new Set(state.table.map(c => c.id));
+            prevTable.forEach(c => {
+                if (!currTableIds.has(c.id) && c.id !== aiPlayedCardId) {
+                    capturedTableIds.push(c.id);
+                }
+            });
+
+            // Trigger Animation
+            if (!this.aiAnimatingCards.has(aiPlayedCardId)) {
+                let startX = width / 2;
+                let startY = 0;
+                if (aiPlayerIndex !== -1) {
+                    const relativePos = this.getRelativePos(aiPlayerIndex, validMyIndex, state.players.length);
+                    const startConfig = positions[relativePos];
+                    startX = startConfig.x;
+                    startY = startConfig.y;
+                }
+                this.runAiSequence(aiPlayedCardId, capturedTableIds, state, width, height, handCardH, tableCardW, tableCardH, pileAlignX, startX, startY);
             }
+        }
 
+        // Render Table Cards
+        // console.log("DEBUG: Render State Table:", state.table);
+        const currentTableIds = new Set(state.table.map(c => c.id));
+        this.tableCards.getChildren().forEach(sprite => {
+            if (!currentTableIds.has(sprite.card_id) && !this.aiAnimatingCards.has(sprite.card_id)) {
+                // Remove card if not in table and not animating
+                // But wait, it might be captured? 
+                // We handle removals in cleanupRemovedCards
+            }
+        });
+
+        // Add New Table Cards
+        state.table.forEach((card, index) => {
+            if (!this.cardMap.has(card.id)) {
+                const coords = this.getTableCoords(index, state.table.length);
+                this.syncCard(card.id, coords.x, coords.y, 0, true, 'table', tableCardW, tableCardH, handCardH, 0, silent);
+            }
+        });
+
+        // Sync Table Positions (for existing cards)
+        state.table.forEach((card, index) => {
+            if (!this.aiAnimatingCards.has(card.id)) {
+                const sprite = this.cardMap.get(card.id);
+                if (sprite) {
+                    const coords = this.getTableCoords(index, state.table.length);
+
+                    // Force Resize to Table Dimensions (Fix for "Giant Cards")
+                    this.updateCardTexture(sprite, card.id, true, tableCardW, tableCardH);
+
+                    this.tweens.add({
+                        targets: sprite,
+                        x: coords.x,
+                        y: coords.y,
+                        angle: (Math.random() * 10 - 5), // Random jitter
+                        duration: 400,
+                        ease: 'Cubic.easeOut'
+                    });
+                }
+            }
+        });
+
+        // Render Players
+        const validIds = new Set();
+        state.table.forEach(c => validIds.add(c.id));
+
+        // Detect AI Move (Turn just changed, was AI?)
+        // Logic moved to top to prevent race conditions
+
+        // Determine whose turn it is
+        let currentTurnName = "";
+        if (state.players.length > 0) {
+            currentTurnName = state.players[state.current_player_index].name;
+        }
+
+        // Check if an AI just played (hacky state diff or event?)
+        // For animations, we really need the event. But let's rely on standard 'sync' for now unless we have the event data.
+        // The 'updateGameState' function might store previous state?
+
+        state.players.forEach((p, index) => {
+            // Use helper
+            const relativePos = this.getRelativePos(index, validMyIndex, state.players.length);
             const posConfig = positions[relativePos];
-
-            // Turn Indicator / Name Label (Text only here)
 
             // Turn Indicator / Name Label
             const isMyTurn = (p.name === currentTurnName);
@@ -381,16 +526,21 @@ export default class ChkoubaScene extends Phaser.Scene {
             else if (relativePos === 2) textY -= 80; // Top
             else if (relativePos === 3) textX -= 60; // Left
 
-            // Use a persistent text object map or just recreate (text is cheap)
-            // Ideally we should manage these but for now, simple add/destroy or keep track?
-            // Since we don't have a 'textGroup', let's use a unique ID for text
-            const textId = `name_${p.name}`;
-            if (this.children.getByName(textId)) {
-                this.children.getByName(textId).destroy();
+            // Use a persistent text object map keyed by Index (Stable)
+            const textId = `name_p_${index}`;
+            let nameText = this.children.getByName(textId);
+            if (nameText) {
+                // Update existing
+                nameText.setPosition(textX, textY);
+                nameText.setText(p.name);
+                nameText.setStyle({ font: `${nameWeight} ${nameSize} monospace`, fill: nameColor, backgroundColor: '#00000088' });
+                nameText.setDepth(200);
+            } else {
+                // Create new
+                this.add.text(textX, textY, p.name, {
+                    font: `${nameWeight} ${nameSize} monospace`, fill: nameColor, backgroundColor: '#00000088'
+                }).setOrigin(0.5).setName(textId).setDepth(200);
             }
-            const nameText = this.add.text(textX, textY, p.name, {
-                font: `${nameWeight} ${nameSize} monospace`, fill: nameColor, backgroundColor: '#00000088'
-            }).setOrigin(0.5).setName(textId).setDepth(200);
 
             p.hand.forEach((card, i) => {
                 validIds.add(card.id);
@@ -412,21 +562,15 @@ export default class ChkoubaScene extends Phaser.Scene {
                 }
 
                 // Determine Texture
-                // Bottom = always Visible. Others = Hidden unless debug or game ended?
-                // Actually, standard is Hidden unless ShowAI
                 const isFaceUp = (relativePos === 0);
-
-                // Deal Animation: 1 card per player at a time (Circular)
-                // Cycle: Card 0 for P0, P1, P2, P3... Card 1 for P0...
-                // Delay = (cardIndex * TotalPlayers + PlayerIndex) * step
                 const dealDelay = (i * state.players.length + index) * 150;
 
-                const sprite = this.syncCard(card.id, x, y, angle, isFaceUp, `hand_${relativePos}`, handCardW, handCardH, handCardH, dealDelay);
+                const sprite = this.syncCard(card.id, x, y, angle, isFaceUp, `hand_${relativePos}`, handCardW, handCardH, handCardH, dealDelay, silent);
 
                 if (relativePos === 0) {
                     sprite.setInteractive();
                     sprite.card_id = card.id;
-                    sprite.player_index = state.players.indexOf(p); // Set player index for input handling
+                    sprite.player_index = state.players.indexOf(p);
                     if (isMyTurn) {
                         this.input.setDraggable(sprite);
                     }
@@ -434,7 +578,6 @@ export default class ChkoubaScene extends Phaser.Scene {
             });
 
             // Render Piles (Captured Cards)
-            // Just offset piles near the player
             this.renderPile(p, relativePos, width, height, handCardW);
         });
 
@@ -443,23 +586,12 @@ export default class ChkoubaScene extends Phaser.Scene {
         if (this.turnSpotlight) { this.turnSpotlight.destroy(); this.turnSpotlight = null; }
 
         // AI Animation Logic
-        if (aiPlayedCardId && !this.aiAnimatingCards.has(aiPlayedCardId)) {
-            let startX = width / 2;
-            let startY = 0;
-            if (aiPlayerIndex !== -1) {
-                const relativePos = (aiPlayerIndex - validMyIndex + 4) % 4;
-                const startConfig = positions[relativePos];
-                startX = startConfig.x;
-                startY = startConfig.y;
-            }
-            this.runAiSequence(aiPlayedCardId, capturedTableIds, state, width, height, handCardH, tableCardW, tableCardH, pileAlignX, startX, startY);
-        } else {
-            // State-Based Sync: If it's AI turn and no animation is running/starting, trigger backend
-            const currentP = state.players[state.current_player_index];
-            if (currentP && currentP.is_ai && !this.aiAnimatingCards.size) {
-                console.log("DEBUG: Triggering AI Turn (No Animation)");
-                this.time.delayedCall(500, () => this.sendAnimationComplete());
-            }
+        // AI Animation Logic (Moved to Top)
+        // Fallback: If it's AI turn and no animation is running, trigger backend (e.g. if animation failed or state sync missed it)
+        const currentP = state.players[state.current_player_index];
+        if (currentP && currentP.is_ai && !this.aiAnimatingCards.size && !aiPlayedCardId) {
+            // console.log("DEBUG: Triggering AI Turn (No Animation)");
+            this.time.delayedCall(500, () => this.sendAnimationComplete());
         }
 
         // Cleanup
@@ -467,7 +599,7 @@ export default class ChkoubaScene extends Phaser.Scene {
 
         // Update Indicator - Delayed by capture animation
         this.time.delayedCall(cleanupDelay, () => {
-             this.updateTurnIndicator(currentTurnName);
+            this.updateTurnIndicator(currentTurnName);
         });
     }
 
@@ -488,6 +620,7 @@ export default class ChkoubaScene extends Phaser.Scene {
         this.children.bringToTop(playedSprite);
 
         // Sequence
+        this.tweens.add({
             targets: playedSprite, x: width / 2, y: height * 0.35, angle: 0, duration: 400, ease: 'Cubic.easeOut',
             onComplete: () => {
                 this.tweens.add({
@@ -567,9 +700,22 @@ export default class ChkoubaScene extends Phaser.Scene {
                                         });
                                     } else {
                                         // Drop
-                                        const finalCoords = this.getTableCoords(state.table.findIndex(c => c.id === aiPlayedCardId), state.table.length);
+                                        const tableIndex = state.table.findIndex(c => c.id === aiPlayedCardId);
+                                        const finalCoords = this.getTableCoords(tableIndex !== -1 ? tableIndex : state.table.length, state.table.length);
+                                        // Add jitter to match table style
+                                        const jitter = (Math.random() * 10 - 5);
+
+                                        // Ensure texture size is correct (in case previous step failed)
+                                        this.updateCardTexture(playedSprite, aiPlayedCardId, true, tableCardW, tableCardH);
+
                                         this.tweens.add({
-                                            targets: playedSprite, x: finalCoords.x, y: finalCoords.y, duration: 400, ease: 'Cubic.easeOut',
+                                            targets: playedSprite,
+                                            x: finalCoords.x,
+                                            y: finalCoords.y,
+                                            angle: jitter,
+                                            scale: 1, // Enforce scale 1
+                                            duration: 400,
+                                            ease: 'Cubic.easeOut',
                                             onComplete: () => {
                                                 this.aiAnimatingCards.delete(aiPlayedCardId);
                                                 this.sendAnimationComplete();
@@ -687,7 +833,7 @@ export default class ChkoubaScene extends Phaser.Scene {
         }
     }
 
-    syncCard(id, x, y, angle, isFaceUp, location, w, h, handH, delay = 0) {
+    syncCard(id, x, y, angle, isFaceUp, location, w, h, handH, delay = 0, silent = false) {
         const { width } = this.scale;
         let sprite = this.cardMap.get(id);
         if (!sprite) {
@@ -732,10 +878,12 @@ export default class ChkoubaScene extends Phaser.Scene {
             sprite.setScale(1);
             sprite.setAlpha(1);
         } else {
-            this.tweens.add({ targets: sprite, x: x, y: y, angle: angle, scale: 1, alpha: 1, duration: 600, delay: delay, ease: 'Cubic.easeOut' });
+            // Fix: Use Shortest Angle for Tween
+            const shortestAngle = sprite.angle + angleDiff;
+            this.tweens.add({ targets: sprite, x: x, y: y, angle: shortestAngle, scale: 1, alpha: 1, duration: 600, delay: delay, ease: 'Cubic.easeOut' });
 
-            // Play sound if not just a micro-adjust
-            if (delay > 0 || dist > 100) {
+            // Play sound if not just a micro-adjust AND not silent
+            if (!silent && (delay > 0 || dist > 100)) {
                 this.time.delayedCall(delay, () => this.playSound('card_slide'));
             }
         }
@@ -830,18 +978,19 @@ export default class ChkoubaScene extends Phaser.Scene {
         const state = this.lastState;
         const { width, height } = this.scale;
 
-        // Find positions again (duplicate config for safety or access via scope if moved)
-        // Since positions logic relies on relativePos vs myIndex, let's recalculate
+        // Recalculate positions using helper for consistent Face-to-Face logic
         const myIndex = state.players.findIndex(p => p.name === this.currentPlayerName);
         const validMyIndex = myIndex === -1 ? 0 : myIndex;
         const targetIndex = state.players.findIndex(p => p.name === playerName);
 
         if (targetIndex === -1) return;
 
-        let relativePos = (targetIndex - validMyIndex + 4) % 4;
-        const handCardH = Math.min(width * 0.22, 120) * 1.5; // ESTIMATE, better to store as class prop?
-        // Let's use hardcoded backup or try to reuse positions array if possible. 
-        // Best: Copy positions config here.
+        // Use the centralized helper!
+        const relativePos = this.getRelativePos(targetIndex, validMyIndex, state.players.length);
+
+        const handCardH = Math.min(width * 0.22, 120) * 1.5;
+        // Re-define positions locally or fetch from class if stored.
+        // For safety, duplicating the config to match renderState exactly.
         const positions = [
             { name: 'bottom', x: width / 2, y: height - (handCardH * 0.6), angle: 0 },
             { name: 'right', x: width - (handCardH * 0.6), y: height / 2, angle: -90 },
@@ -852,6 +1001,8 @@ export default class ChkoubaScene extends Phaser.Scene {
         const posConfig = positions[relativePos];
         let ballX = posConfig.x;
         let ballY = posConfig.y;
+
+        // Offset logic must match renderState text offset
         if (relativePos === 0) ballY -= 70;
         else if (relativePos === 1) ballX -= 70;
         else if (relativePos === 2) ballY += 70;

@@ -47,7 +47,7 @@ body {
   max-width: 500px;
   text-align: center;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  animation: float 6s ease-in-out infinite;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
 @keyframes float {

@@ -22,6 +22,7 @@ class GameState(BaseModel):
     current_player_index: int = 0
     round_finished: bool = False
     game_over: bool = False
+    started: bool = False # New flag
     scores: Dict[str, int] = {} # Overall game scores
     score_details: Dict[str, Dict[str, int]] = {} # Detailed breakdown for UI
 
@@ -42,9 +43,15 @@ class ChkoubaEngine:
         for i in range(ai_count):
             self.state.players.append(Player(name=f"AI {i+1}", is_ai=True))
         
-        self.start_new_round()
+        # Don't start automatically
+        # self.start_new_round()
         print(f"DEBUG: Game initialized with players: {[p.name for p in self.state.players]}")
-        print(f"DEBUG: Initial Table: {[c.id for c in self.state.table]}")
+
+    def start_game(self):
+        if not self.state.started:
+            self.state.started = True
+            self.start_new_round()
+            print(f"DEBUG: Game Started explicitly.")
 
     def start_new_round(self):
         self.state.deck = create_deck()

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Phaser from 'phaser';
 import ChkoubaScene from './scenes/ChkoubaScene';
 
-const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
+const ChkoubaGame = ({ playerName, playerCount, gameId, aiCount = 1, onQuit }) => {
     const gameRef = useRef(null);
     const socketRef = useRef(null);
     const [gameState, setGameState] = useState(null);
@@ -45,8 +45,8 @@ const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
         // --- WEBSOCKET CONNECTION ---
         // Use 127.0.0.1 to avoid potential IPv6 localhost issues in WSL
         const items = playerName.trim();
-        // Use the prop passed from App.js which is consistent across reloads
-        const wsUrl = `ws://127.0.0.1:8000/ws/${gameId}/${items}?count=${playerCount}`;
+        // Use prop for config
+        const wsUrl = `ws://127.0.0.1:8000/ws/${gameId}/${items}?count=${playerCount}&ai=${aiCount}`;
         const socket = new WebSocket(wsUrl);
         socketRef.current = socket;
 
@@ -143,8 +143,111 @@ const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
         );
     }
 
+    // Waiting Logic
+    const waitingPlayers = gameState ? gameState.players.filter(p => p.name.startsWith('Waiting...')) : [];
+    // Check 'started' flag. If undefined (legacy backend?), assume true if no waiting players.
+    // But since we updated backend, 'started' should be reliable.
+    const gameStarted = gameState?.started ?? true;
+    const showOverlay = gameState && !gameStarted;
+
+    // Determine if I am Host (Player index 0 is Host)
+    const hostPlayer = gameState && gameState.players.length > 0 ? gameState.players[0] : null;
+    const amIHost = hostPlayer && hostPlayer.name === playerName.trim();
+
+    // Can Start? 
+    // CRITICAL FIX: Must allow start ONLY if NO waiting players remain.
+    // Otherwise "Waiting..." players (who are treated as humans) will softlock the game on their turn.
+    const canStart = amIHost && waitingPlayers.length === 0;
+
+    // Handle Start Game
+    const handleStartGame = () => {
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({ type: 'START_GAME' }));
+        }
+    };
+
     return (
         <div className="game-wrapper" style={{ width: '100%', height: '100%', position: 'relative' }}>
+            {/* Waiting/Start Overlay */}
+            {showOverlay && (
+                <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    color: 'white', zIndex: 5000
+                }}>
+                    <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>
+                        {waitingPlayers.length > 0 ? "En attente de joueurs..." : "Prêt à commencer !"}
+                    </h2>
+
+                    {waitingPlayers.length > 0 && (
+                        <p style={{ fontSize: '1.2rem', marginBottom: '20px' }}>
+                            Il manque <strong>{waitingPlayers.length}</strong> joueur(s).
+                        </p>
+                    )}
+
+                    <div style={{ background: '#334155', padding: '20px', borderRadius: '10px', textAlign: 'center', marginBottom: '30px' }}>
+                        <p style={{ color: '#94a3b8', marginBottom: '5px' }}>Table :</p>
+                        <h1 style={{ color: '#fbbf24', margin: 0, fontSize: '3rem', letterSpacing: '2px' }}>{gameId}</h1>
+                        {hostPlayer && (
+                            <p style={{ marginTop: '10px', color: '#34d399', fontSize: '0.9rem' }}>
+                                Hôte (Créateur) : <strong>{hostPlayer.name}</strong>
+                            </p>
+                        )}
+                    </div>
+
+                    {amIHost ? (
+                        <>
+                            <button
+                                onClick={handleStartGame}
+                                disabled={!canStart}
+                                style={{
+                                    padding: '15px 40px', fontSize: '1.5rem', fontWeight: 'bold', borderRadius: '12px',
+                                    background: canStart ? '#22c55e' : '#475569',
+                                    color: canStart ? '#fff' : '#94a3b8',
+                                    border: 'none', cursor: canStart ? 'pointer' : 'not-allowed',
+                                    boxShadow: canStart ? '0 0 20px rgba(34, 197, 94, 0.4)' : 'none',
+                                    transition: 'all 0.2s',
+                                    marginBottom: '20px'
+                                }}
+                            >
+                                {canStart ? "COMMENCER LA PARTIE" : "En attente de joueurs..."}
+                            </button>
+                            <button
+                                onClick={onQuit}
+                                style={{
+                                    padding: '10px 20px', fontSize: '1rem', fontWeight: 'bold', borderRadius: '8px',
+                                    background: 'transparent', border: '2px solid #ef4444', color: '#ef4444',
+                                    cursor: 'pointer', transition: 'all 0.2s'
+                                }}
+                                onMouseEnter={(e) => { e.target.style.background = '#ef4444'; e.target.style.color = '#fff'; }}
+                                onMouseLeave={(e) => { e.target.style.background = 'transparent'; e.target.style.color = '#ef4444'; }}
+                            >
+                                Annuler la table
+                            </button>
+                        </>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+                            <div style={{ fontStyle: 'italic', color: '#94a3b8' }}>
+                                {waitingPlayers.length === 0
+                                    ? `En attente de ${hostPlayer?.name} pour lancer la partie...`
+                                    : "Veuillez patienter..."}
+                            </div>
+                            <button
+                                onClick={onQuit}
+                                style={{
+                                    padding: '8px 16px', fontSize: '0.9rem', borderRadius: '6px',
+                                    background: '#334155', border: '1px solid #475569', color: '#94a3b8',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                &larr; Quitter la table
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div id="phaser-container" style={{ width: '100%', height: '100%' }} />
             {gameState && (
                 <>
@@ -178,36 +281,30 @@ const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
                                             </tr>
                                         ))}
                                         {/* Bermila */}
-                                        <tr style={{ borderBottom: '2px solid #fbbf24' }}>
-                                            <td style={{ padding: '8px', textAlign: 'left', color: '#cbd5e1' }}>Bermila</td>
+                                        <tr>
+                                            <td style={{ padding: '8px', textAlign: 'left', color: '#fbbf24', fontWeight: 'bold' }}>Bermila</td>
                                             {gameState.players.map(p => {
                                                 const details = gameState.score_details?.[p.name] || {};
                                                 const pt = details[`Bermila_Pt`] || 0;
-                                                return <td key={p.name} style={{ padding: '8px' }}>{pt > 0 ? "YES (1)" : "-"}</td>
+                                                return <td key={p.name} style={{ padding: '8px', color: '#fbbf24', fontWeight: 'bold' }}>{pt > 0 ? `+${pt}` : '-'}</td>
                                             })}
                                         </tr>
-                                        <tr style={{ fontWeight: 'bold', fontSize: '1.5rem', background: '#0f172a' }}>
-                                            <td style={{ padding: '15px', textAlign: 'left', color: '#fbbf24' }}>TOTAL</td>
-                                            {gameState.players.map(p => (
-                                                <td key={p.name} style={{ padding: '15px', color: '#fbbf24' }}>{gameState.scores[p.name] || 0}</td>
-                                            ))}
+                                        <tr style={{ borderTop: '2px solid #fbbf24' }}>
+                                            <td style={{ padding: '15px', textAlign: 'left', fontWeight: 'bold' }}>TOTAL</td>
+                                            {gameState.players.map(p => <td key={p.name} style={{ padding: '15px', fontWeight: 'bold', fontSize: '1.5rem', color: p.name === playerName ? '#34d399' : 'white' }}>{gameState.scores[p.name] || 0}</td>)}
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
 
+                            {/* Reset / Next Round Actions */}
                             <div style={{ marginTop: '30px', display: 'flex', gap: '20px' }}>
-                                {!gameState.game_over && (
-                                    <button onClick={() => {
-                                        if (socketRef.current) socketRef.current.send(JSON.stringify({ type: 'NEXT_ROUND' }));
-                                    }} style={{ padding: '12px 30px', fontSize: '1.2rem', fontWeight: 'bold', background: '#34d399', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#000' }}>
-                                        Nouveau coup
-                                    </button>
-                                )}
-
-                                <button onClick={() => {
-                                    if (socketRef.current) socketRef.current.send(JSON.stringify({ type: 'RESET' }));
-                                }} style={{ padding: '12px 30px', fontSize: '1.2rem', fontWeight: 'bold', background: '#fbbf24', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#000' }}>
+                                <button
+                                    onClick={() => {
+                                        if (socketRef.current) socketRef.current.send(JSON.stringify({ type: 'RESET' }));
+                                    }}
+                                    style={{ padding: '15px 30px', fontSize: '1.2rem', borderRadius: '10px', border: 'none', background: '#eab308', cursor: 'pointer', fontWeight: 'bold' }}
+                                >
                                     Nouvelle Partie
                                 </button>
                             </div>
@@ -218,11 +315,6 @@ const ChkoubaGame = ({ playerName, playerCount, gameId, onQuit }) => {
                     {/* Player Name and Score - Bottom Right */}
                     <div style={{ position: 'absolute', bottom: '40px', right: '350px', background: 'rgba(0,0,0,0.5)', padding: '4px 12px', borderRadius: '12px', color: '#fff', fontWeight: 'bold', fontSize: '16px', zIndex: 1000, pointerEvents: 'none' }}>
                         {playerName}: {gameState.scores[playerName] || 0} pts
-                    </div>
-
-                    {/* AI Suspect - Top Right (aligned with hand) */}
-                    <div style={{ position: 'absolute', top: '160px', right: '350px', background: 'rgba(0,0,0,0.6)', padding: '5px 15px', borderRadius: '20px', color: 'white', fontWeight: 'bold', fontSize: '14px', zIndex: 1000, pointerEvents: 'none' }}>
-                        AI Suspect: {gameState.scores["AI 1"] || 0} pts
                     </div>
 
                     {/* Deck Count Display - Positioned under the deck */}
